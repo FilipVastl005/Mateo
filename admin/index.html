@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Administrace | Meteostanice</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <i class="fas fa-cloud-sun"></i>
+                <span>Meteostanice</span>
+                <small>Admin</small>
+            </div>
+            <div class="nav-menu">
+                <a href="../index.html"><i class="fas fa-arrow-left"></i> Zpět</a>
+                <a href="#dashboard" class="active"><i class="fas fa-chart-pie"></i> Přehled</a>
+                <a href="#stations"><i class="fas fa-satellite"></i> Stanice</a>
+                <a href="#users"><i class="fas fa-users"></i> Uživatelé</a>
+                <button class="btn-refresh" onclick="nactiData()">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <section class="admin-stats">
+            <div class="stat-card">
+                <div class="stat-icon" style="background: #667eea;">
+                    <i class="fas fa-satellite-dish"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-value" id="total-stations">0</span>
+                    <span class="stat-label">Celkem stanic</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="background: #4CAF50;">
+                    <i class="fas fa-database"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-value" id="total-readings">0</span>
+                    <span class="stat-label">Celkem měření</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="background: #FF9800;">
+                    <i class="fas fa-users"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-value" id="total-users">0</span>
+                    <span class="stat-label">Registrovaní uživatelé</span>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="background: #2196F3;">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <div class="stat-info">
+                    <span class="stat-value" id="last-update">--</span>
+                    <span class="stat-label">Poslední aktualizace</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="chart-section">
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3><i class="fas fa-chart-bar"></i> Přehled měření za 30 dní</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="adminGraf"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <section id="stations" class="table-section">
+            <div class="history-card">
+                <div class="history-header">
+                    <h3><i class="fas fa-satellite"></i> Správa stanic</h3>
+                    <button class="btn-primary" onclick="pridatStanici()">
+                        <i class="fas fa-plus"></i> Přidat stanici
+                    </button>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Název</th>
+                                <th>Lokace</th>
+                                <th>API klíč</th>
+                                <th>Stav</th>
+                                <th>Akce</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stations-body">
+                            <tr><td colspan="6" style="text-align: center;">Načítám...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section id="users" class="table-section">
+            <div class="history-card">
+                <div class="history-header">
+                    <h3><i class="fas fa-users"></i> Správa uživatelů</h3>
+                    <button class="btn-primary" onclick="pridatUzivatele()">
+                        <i class="fas fa-user-plus"></i> Přidat uživatele
+                    </button>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Uživatel</th>
+                                <th>Email</th>
+                                <th>Role</th>
+                                <th>Datum registrace</th>
+                                <th>Akce</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-body">
+                            <tr><td colspan="6" style="text-align: center;">Načítám...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        let adminChart = null;
+
+        async function nactiData() {
+            try {
+                const [stats, stations, users, readings] = await Promise.all([
+                    fetch('../api/stats.php').then(r => r.json()),
+                    fetch('../api/stations.php').then(r => r.json()),
+                    fetch('../api/users.php').then(r => r.json()),
+                    fetch('../api/history.php?limit=30').then(r => r.json())
+                ]);
+
+                document.getElementById('total-stations').textContent = stats.total_stations || 0;
+                document.getElementById('total-readings').textContent = stats.total_readings || 0;
+                document.getElementById('total-users').textContent = stats.total_users || 0;
+                document.getElementById('last-update').textContent = new Date().toLocaleTimeString('cs-CZ');
+
+                renderStations(stations);
+                renderUsers(users);
+                renderAdminChart(readings);
+            } catch (error) {
+                console.error('Chyba:', error);
+            }
+        }
+
+        function renderStations(data) {
+            const tbody = document.getElementById('stations-body');
+            if (!data.data || data.data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Žádné stanice</td></tr>';
+                return;
+            }
+            tbody.innerHTML = data.data.map(s => `
+                <tr>
+                    <td>${s.id}</td>
+                    <td><strong>${s.name}</strong></td>
+                    <td>${s.location || '--'}</td>
+                    <td><code>${s.api_key}</code></td>
+                    <td><span class="status-badge ${s.is_active ? 'normal' : 'low'}">${s.is_active ? '✅ Aktivní' : '❌ Neaktivní'}</span></td>
+                    <td>
+                        <button class="btn-small" onclick="editStanice('${s.id}')"><i class="fas fa-edit"></i></button>
+                        <button class="btn-small danger" onclick="smazStanici('${s.id}')"><i class="fas fa-trash"></i></button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function renderUsers(data) {
+            const tbody = document.getElementById('users-body');
+            if (!data.data || data.data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Žádní uživatelé</td></tr>';
+                return;
+            }
+            tbody.innerHTML = data.data.map(u => `
+                <tr>
+                    <td>${u.id}</td>
+                    <td><strong>${u.username}</strong></td>
+                    <td>${u.email}</td>
+                    <td><span class="status-badge normal">${u.role}</span></td>
+                    <td>${new Date(u.created_at).toLocaleDateString('cs-CZ')}</td>
+                    <td>
+                        <button class="btn-small" onclick="editUzivatele('${u.id}')"><i class="fas fa-edit"></i></button>
+                        <button class="btn-small danger" onclick="smazUzivatele('${u.id}')"><i class="fas fa-trash"></i></button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function renderAdminChart(data) {
+            const ctx = document.getElementById('adminGraf');
+            if (!ctx) return;
+            if (adminChart) adminChart.destroy();
+            if (!data.data || data.data.length === 0) return;
+
+            const labels = data.data.map(d => new Date(d.timestamp_utc).toLocaleDateString('cs-CZ'));
+            const counts = data.data.map((d, i) => i + 1);
+
+            adminChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Počet měření',
+                        data: counts,
+                        backgroundColor: 'rgba(102, 126, 234, 0.6)',
+                        borderColor: '#667eea',
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(0,0,0,0.05)' }
+                        },
+                        x: {
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        function pridatStanici() {
+            alert('Formulář pro přidání stanice');
+        }
+
+        function editStanice(id) {
+            alert('Editace stanice: ' + id);
+        }
+
+        function smazStanici(id) {
+            if (confirm('Opravdu chcete smazat stanici?')) {
+                alert('Stanice smazána: ' + id);
+            }
+        }
+
+        function pridatUzivatele() {
+            alert('Formulář pro přidání uživatele');
+        }
+
+        function editUzivatele(id) {
+            alert('Editace uživatele: ' + id);
+        }
+
+        function smazUzivatele(id) {
+            if (confirm('Opravdu chcete smazat uživatele?')) {
+                alert('Uživatel smazán: ' + id);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', nactiData);
+        setInterval(nactiData, 60000);
+    </script>
+</body>
+</html>

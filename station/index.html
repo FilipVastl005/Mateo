@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detail stanice | Meteostanice</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="../assets/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <i class="fas fa-cloud-sun"></i>
+                <span>Meteostanice</span>
+                <small id="station-name">Detail</small>
+            </div>
+            <div class="nav-menu">
+                <a href="../index.html"><i class="fas fa-arrow-left"></i> Zpět</a>
+                <a href="#dashboard" class="active"><i class="fas fa-chart-line"></i> Detail</a>
+                <button class="btn-refresh" onclick="nactiData()">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="station-detail">
+            <div class="station-info">
+                <h1 id="station-title">Načítám...</h1>
+                <p id="station-location"><i class="fas fa-map-pin"></i> --</p>
+                <div class="station-status">
+                    <span id="station-status-badge" class="status-badge normal">Online</span>
+                    <span id="station-last-seen">Naposledy: --</span>
+                </div>
+            </div>
+
+            <div class="weather-grid">
+                <div class="weather-card main">
+                    <div class="weather-temp">
+                        <span id="detail-teplota">--</span>
+                        <span class="unit">°C</span>
+                    </div>
+                    <div class="weather-details-grid">
+                        <div class="weather-detail">
+                            <i class="fas fa-tint"></i>
+                            <span>Vlhkost</span>
+                            <strong id="detail-vlhkost">--%</strong>
+                        </div>
+                        <div class="weather-detail">
+                            <i class="fas fa-compress-alt"></i>
+                            <span>Tlak</span>
+                            <strong id="detail-tlak">-- hPa</strong>
+                        </div>
+                        <div class="weather-detail">
+                            <i class="fas fa-wind"></i>
+                            <span>Kvalita vzduchu</span>
+                            <strong id="detail-kvalita">--</strong>
+                        </div>
+                        <div class="weather-detail">
+                            <i class="fas fa-tint"></i>
+                            <span>Srážky</span>
+                            <strong id="detail-srazky">-- mm</strong>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="weather-card">
+                    <h3><i class="fas fa-chart-area"></i> Historie</h3>
+                    <canvas id="stationGraf" height="200"></canvas>
+                </div>
+            </div>
+
+            <div class="history-card">
+                <div class="history-header">
+                    <h3><i class="fas fa-list"></i> Poslední měření</h3>
+                    <button class="btn-export" onclick="exportData()">
+                        <i class="fas fa-file-export"></i> Export CSV
+                    </button>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Teplota</th>
+                                <th>Vlhkost</th>
+                                <th>Tlak</th>
+                                <th>Kvalita</th>
+                                <th>Čas</th>
+                            </tr>
+                        </thead>
+                        <tbody id="detail-body">
+                            <tr><td colspan="6" style="text-align: center;">Načítám...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let stationChart = null;
+        let stationData = [];
+
+        function getStationId() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('id') || 'mateo_001';
+        }
+
+        async function nactiData() {
+            const id = getStationId();
+            try {
+                const response = await fetch(`../api/history.php?station_id=${id}&limit=50`);
+                const data = await response.json();
+                if (!data.success) throw new Error(data.error);
+                stationData = data.data;
+                aktualizujDetail();
+                aktualizujGraf();
+                aktualizujTabulku();
+            } catch (error) {
+                console.error('Chyba:', error);
+            }
+        }
+
+        function aktualizujDetail() {
+            if (!stationData.length) return;
+            const last = stationData[stationData.length - 1];
+            document.getElementById('station-title').textContent = last.station_name || 'Stanice';
+            document.getElementById('station-location').textContent = last.location || 'Neznámá lokace';
+            document.getElementById('detail-teplota').textContent = last.temperature_c || '--';
+            document.getElementById('detail-vlhkost').textContent = last.humidity_pct ? last.humidity_pct + '%' : '--%';
+            document.getElementById('detail-tlak').textContent = last.pressure_hpa ? last.pressure_hpa + ' hPa' : '-- hPa';
+            document.getElementById('detail-kvalita').textContent = last.air_quality_raw || '--';
+            document.getElementById('detail-srazky').textContent = last.rainfall_mm ? last.rainfall_mm + ' mm' : '-- mm';
+            document.getElementById('station-last-seen').textContent = 'Naposledy: ' + new Date(last.timestamp_utc).toLocaleString('cs-CZ');
+        }
+
+        function aktualizujGraf() {
+            if (!stationData.length) return;
+            const ctx = document.getElementById('stationGraf');
+            if (!ctx) return;
+            if (stationChart) stationChart.destroy();
+
+            const labels = stationData.map(d => new Date(d.timestamp_utc).toLocaleTimeString('cs-CZ'));
+            const temps = stationData.map(d => d.temperature_c);
+
+            stationChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Teplota (°C)',
+                        data: temps,
+                        borderColor: '#667eea',
+                        backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: false, grid: { color: 'rgba(0,0,0,0.05)' } },
+                        x: { grid: { display: false } }
+                    }
+                }
+            });
+        }
+
+        function aktualizujTabulku() {
+            const tbody = document.getElementById('detail-body');
+            if (!stationData.length) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Žádná data</td></tr>';
+                return;
+            }
+            tbody.innerHTML = stationData.slice(-10).reverse().map((d, i) => `
+                <tr>
+                    <td>${i + 1}</td>
+                    <td><strong>${d.temperature_c || '--'}°C</strong></td>
+                    <td>${d.humidity_pct || '--'}%</td>
+                    <td>${d.pressure_hpa || '--'} hPa</td>
+                    <td>${d.air_quality_raw || '--'}</td>
+                    <td>${new Date(d.timestamp_utc).toLocaleString('cs-CZ')}</td>
+                </tr>
+            `).join('');
+        }
+
+        function exportData() {
+            if (!stationData.length) { alert('Žádná data'); return; }
+            let csv = 'Teplota,Vlhkost,Tlak,Kvalita,Čas\n';
+            stationData.forEach(d => {
+                csv += `${d.temperature_c},${d.humidity_pct},${d.pressure_hpa},${d.air_quality_raw},${d.timestamp_utc}\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `stanice_${getStationId()}_${new Date().toISOString().slice(0,10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        document.addEventListener('DOMContentLoaded', nactiData);
+        setInterval(nactiData, 30000);
+    </script>
+</body>
+</html>

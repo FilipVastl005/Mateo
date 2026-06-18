@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meteostanice | Live Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <i class="fas fa-cloud-sun"></i>
+                <span>Meteostanice</span>
+            </div>
+            <div class="nav-menu">
+                <a href="#dashboard" class="active"><i class="fas fa-chart-line"></i> Dashboard</a>
+                <a href="#history"><i class="fas fa-history"></i> Historie</a>
+                <a href="#settings"><i class="fas fa-cog"></i> Nastavení</a>
+                <button class="btn-refresh" onclick="nactiData()">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        <section class="weather-section">
+            <div class="weather-card">
+                <div class="weather-icon">
+                    <i class="fas fa-thermometer-half"></i>
+                </div>
+                <div class="weather-info">
+                    <div class="temp-display">
+                        <span id="aktualni-teplota">--</span>
+                        <span class="temp-unit">°C</span>
+                    </div>
+                </div>
+                <div class="weather-desc">
+                    <span id="stav-pocasi">Načítám...</span>
+                    <span id="cas-mereni"></span>
+                </div>
+                <div class="weather-details">
+                    <div class="detail-item">
+                        <i class="fas fa-arrow-up"></i>
+                        <span>Max: <span id="max-teplota">--°C</span></span>
+                    </div>
+                    <div class="detail-item">
+                        <i class="fas fa-arrow-down"></i>
+                        <span>Min: <span id="min-teplota">--°C</span></span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: #4CAF50;">
+                        <i class="fas fa-database"></i>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="pocet-mereni">0</span>
+                        <span class="stat-label">Měření celkem</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: #FF9800;">
+                        <i class="fas fa-chart-bar"></i>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="prum-teplota">--°C</span>
+                        <span class="stat-label">Průměrná teplota</span>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: #2196F3;">
+                        <i class="fas fa-clock"></i>
+                    </div>
+                    <div class="stat-info">
+                        <span class="stat-value" id="posledni-aktualizace">--</span>
+                        <span class="stat-label">Poslední aktualizace</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="chart-section">
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3><i class="fas fa-chart-area"></i> Vývoj teploty</h3>
+                    <div class="chart-controls">
+                        <button class="btn-time" data-period="24h">24h</button>
+                        <button class="btn-time" data-period="7d">7d</button>
+                        <button class="btn-time active" data-period="30d">30d</button>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="teplotaGraf"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <section class="history-section" id="history">
+            <div class="history-card">
+                <div class="history-header">
+                    <h3><i class="fas fa-list"></i> Poslední měření</h3>
+                    <button class="btn-export" onclick="exportData()">
+                        <i class="fas fa-file-export"></i> Export CSV
+                    </button>
+                </div>
+                <div class="table-container">
+                    <table id="history-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Teplota</th>
+                                <th>Čas měření</th>
+                                <th>Stav</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body">
+                            <tr>
+                                <td colspan="4" style="text-align: center;">Načítám data...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <section class="settings-section" id="settings">
+            <div class="settings-card">
+                <h3><i class="fas fa-sliders-h"></i> Nastavení</h3>
+                <div class="settings-form">
+                    <div class="form-group">
+                        <label>Email pro notifikace</label>
+                        <input type="email" id="notify-email" placeholder="tvuj@email.cz">
+                    </div>
+                    <div class="form-group">
+                        <label>Maximální teplota pro alert</label>
+                        <input type="number" id="max-alert" placeholder="35" step="0.1">
+                    </div>
+                    <div class="form-group">
+                        <label>Minimální teplota pro alert</label>
+                        <input type="number" id="min-alert" placeholder="-5" step="0.1">
+                    </div>
+                    <button class="btn-save" onclick="saveSettings()">
+                        <i class="fas fa-save"></i> Uložit nastavení
+                    </button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <footer class="footer">
+        <p>&copy; 2026 Meteostanice | <i class="fas fa-code"></i> Made with ❤️</p>
+    </footer>
+
+    <script src="assets/js/app.js"></script>
+</body>
+</html>

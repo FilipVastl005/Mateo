@@ -14,7 +14,7 @@ The system has two physical builds and a backend:
 
 - **Weather Station** — outdoor unit, battery/solar powered, reads sensors, transmits over 433 MHz RF
 - **Home Node** — indoor unit, mains powered, receives RF from the station, shows data on a local display, forwards to the server over Wi-Fi
-- **Server** — receives data from nodes, serves it to mobile apps
+- **Server** — receives data from nodes, serves it to mobile apps and web page
 
 ---
 
@@ -22,7 +22,7 @@ The system has two physical builds and a backend:
 
 ### What it does
 
-Runs on battery with a solar panel. Spends most of its time in deep sleep. Wakes up, reads all sensors, compares values to the last transmission, and decides how long to sleep next — between 5 and 30 minutes depending on how much the readings changed. Encodes the data into a compact ASK packet and fires it over 433 MHz RF to the node.
+Runs on battery. Spends most of its time in deep sleep. Wakes up, reads all sensors, compares values to the last transmission, and decides how long to sleep next — between 5 and 30 minutes depending on how much the readings changed. Encodes the data into a compact ASK packet and sends it over 433 MHz RF to the node.
 
 ### Hardware
 
@@ -145,13 +145,11 @@ Arduino framework, ESP32 core 2.x.
 - `ArduinoJson`
 - `SD`
 
-```bash
-git clone https://github.com/FilipVastl005/Mateo.git
-```
+
 
 **Station config** — `firmware/station/config.h`
 ```cpp
-#define STATION_ID          "your-station-id"
+#define STATION_ID          "your-station-id" //you will be given an id after sigining up
 #define TX_PIN              4
 #define RAIN_PIN            27
 #define SEND_INTERVAL_MIN   5    // minutes
@@ -162,7 +160,7 @@ git clone https://github.com/FilipVastl005/Mateo.git
 ```cpp
 #define WIFI_SSID     "ssid"
 #define WIFI_PASS     "password"
-#define API_KEY       "your-api-key"
+#define API_KEY       "your-api-key" //you will be given an api key after signing up
 #define SERVER_URL    "https://api.eggmanstudio.me/api"
 #define RX_PIN        15
 ```
@@ -188,5 +186,3 @@ PRs welcome — firmware, sensor drivers, PCB layouts, server, apps.
 ```bash
 git checkout -b feature/your-thing
 ```
-
-MIT License

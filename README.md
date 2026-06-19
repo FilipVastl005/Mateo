@@ -7,14 +7,16 @@ Distributed open-source weather station network. People build stations at home, 
 ## System Overview
 
 ```
-[Weather Station] --433MHz ASK--> [Home Node] --REST API--> [Server] --API--> [Mobile App]
+[Weather Station] --433MHz ASK--> [Home Node] --/api--> [Server] --/appapi--> [Mobile App]
+                                                                  <--JWT Auth--
 ```
 
-The system has two physical builds and a backend:
+The system has two physical builds, a backend, and a mobile app:
 
 - **Weather Station** — outdoor unit, battery/solar powered, reads sensors, transmits over 433 MHz RF
 - **Home Node** — indoor unit, mains powered, receives RF from the station, shows data on a local display, forwards to the server over Wi-Fi
-- **Server** — receives data from nodes, serves it to mobile apps and web page
+- **Server** — receives data from nodes, manages user accounts and auth, serves data to mobile apps
+- **Mobile App** — Android (primary), iOS (planned); authenticates users, displays station data, manages station ownership
 
 ---
 
@@ -22,7 +24,7 @@ The system has two physical builds and a backend:
 
 ### What it does
 
-Runs on battery. Spends most of its time in deep sleep. Wakes up, reads all sensors, compares values to the last transmission, and decides how long to sleep next — between 5 and 30 minutes depending on how much the readings changed. Encodes the data into a compact ASK packet and sends it over 433 MHz RF to the node.
+Runs on battery with a solar panel. Spends most of its time in deep sleep. Wakes up, reads all sensors, compares values to the last transmission, and decides how long to sleep next — between 5 and 30 minutes depending on how much the readings changed. Encodes the data into a compact ASK packet and fires it over 433 MHz RF to the node.
 
 ### Hardware
 
@@ -99,13 +101,162 @@ Runs continuously indoors. Listens for RF packets from the station, renders read
 
 ---
 
+## Mobile App
+
+Primary target: Android. iOS planned for a later stage. Both will share the same codebase (React Native or Flutter — TBD).
+
+### What it does
+
+- User registers and logs in with email + password
+- On first launch after login, user links their `station_id` to their account
+- App pulls current readings and historical data from the App API
+- Displays current weather, graphs over selectable time ranges, and an air quality index derived from raw MQ-2 values
+- Community map showing all public stations (optional per-station privacy toggle)
+- Push notifications for significant changes (e.g. rapid pressure drop, high air quality index)
+
+### Screens
+
+| Screen | Description |
+|--------|-------------|
+| Register / Login | Email + password, JWT stored securely in device keystore |
+| Dashboard | Current readings for the user's station — temp, humidity, pressure, AQI, rainfall |
+| History | Time-series graphs, selectable range (24 h / 7 d / 30 d / custom) |
+| Map | Community map of all public Mateo stations |
+| Station settings | Rename station, toggle public/private, unlink station |
+| Account settings | Change email, change password, delete account |
+
+### Auth flow (app side)
+
+1. `POST /appapi/auth/register` — creates account, returns JWT access token + refresh token
+2. Store access token in memory, refresh token in device keystore
+3. Attach `Authorization: Bearer <access_token>` to every App API request
+4. On 401 response: use refresh token to get a new access token (`POST /appapi/auth/refresh`)
+5. If refresh fails (expired or revoked): log user out, redirect to login
+
+---
+
 ## Server
 
-Hosted at `api.eggmanstudio.me`. Two API roots — one for devices, one for apps. Web dashboard and station registration at `weather.eggmanstudio.me`.
+Hosted at `api.eggmanstudio.me`. Two API roots — one for devices, one for apps. Web dashboard at `weather.eggmanstudio.me`.
 
-### Device API — `https://api.eggmanstudio.me/api`
+---
 
-Used by the home node.
+## User Accounts & Auth
+
+Custom JWT-based auth. All auth endpoints are under the App API root.
+
+### Token design
+
+| Token | TTL | Storage |
+|-------|-----|---------|
+| Access token (JWT) | 15 minutes | App memory only |
+| Refresh token (opaque, stored in DB) | 30 days, sliding | Device keystore |
+
+Passwords are hashed with **bcrypt** (cost factor ≥ 12) before storage. Plain-text passwords never hit the database.
+
+Refresh tokens are rotated on every use — each refresh issues a new refresh token and invalidates the old one. This limits the damage of a stolen token.
+
+### Auth API endpoints — `https://api.eggmanstudio.me/appapi/auth`
+
+**POST** `/register`
+```json
+{ "email": "user@example.com", "password": "..." }
+```
+- Validates email format, enforces minimum password length (12 chars)
+- Hashes password with bcrypt
+- Creates user record
+- Returns access token + refresh token
+
+**POST** `/login`
+```json
+{ "email": "user@example.com", "password": "..." }
+```
+- Verifies bcrypt hash
+- Issues new access token + refresh token
+- Returns both tokens
+
+**POST** `/refresh`
+```json
+{ "refresh_token": "..." }
+```
+- Validates refresh token against DB
+- Rotates token (old one invalidated immediately)
+- Returns new access token + new refresh token
+
+**POST** `/logout`
+```json
+{ "refresh_token": "..." }
+```
+- Invalidates the provided refresh token in DB
+- Client discards both tokens
+
+**POST** `/logout-all`  
+Header: `Authorization: Bearer <access_token>`
+- Invalidates **all** refresh tokens for the user (all devices signed out)
+
+**POST** `/change-password`  
+Header: `Authorization: Bearer <access_token>`
+```json
+{ "current_password": "...", "new_password": "..." }
+```
+- Verifies current password
+- Re-hashes new password
+- Invalidates all existing refresh tokens (forces re-login on all devices)
+
+**DELETE** `/account`  
+Header: `Authorization: Bearer <access_token>`
+```json
+{ "password": "..." }
+```
+- Verifies password
+- Deletes user record, all associated stations, all readings, all refresh tokens
+
+### Security rules
+
+- Rate limiting on all auth endpoints (suggested: 10 req/min per IP on login/register)
+- No password hints, no security questions
+- Email enumeration protection: registration and login return identical error messages for invalid credentials
+- Refresh tokens stored as hashed values in DB — raw token only ever exists in transit and on the client
+- All auth endpoints HTTPS only
+
+---
+
+## App API — `https://api.eggmanstudio.me/appapi`
+
+All non-auth endpoints require `Authorization: Bearer <access_token>`.
+
+### Station management
+
+**POST** `/stations/link`
+```json
+{ "station_id": "abc123" }
+```
+Links a station to the authenticated user's account.
+
+**GET** `/stations` — returns all stations owned by the user
+
+**PATCH** `/stations/{station_id}`
+```json
+{ "name": "Backyard", "public": true }
+```
+
+**DELETE** `/stations/{station_id}` — unlinks station from account
+
+### Data
+
+**GET** `/stations/{station_id}/latest` — current readings
+
+**GET** `/stations/{station_id}/readings?from=2026-06-01&to=2026-06-18` — historical range
+
+**GET** `/stations/public` — all public stations (for community map)
+
+---
+
+## Device API — `https://api.eggmanstudio.me/api`
+
+Used by the home node only. Authenticated with a static per-station `api_key` (not JWT — nodes don't have user sessions).
+
+**GET** `/ping` — connectivity check, returns `{ "status": "ok" }`
 
 **POST** `/readings`
 ```json
@@ -120,17 +271,7 @@ Used by the home node.
 }
 ```
 
-**GET** `/ping` — returns `{ "status": "ok" }`, used by node to check connectivity before flushing SD
-
-### App API — `https://api.eggmanstudio.me/appapi`
-
-Used by mobile apps.
-
-**GET** `/stations/{station_id}/latest`
-
-**GET** `/stations/{station_id}/readings?from=2026-06-01&to=2026-06-18`
-
-All endpoints require `Authorization: Bearer <api_key>`.
+Header: `Authorization: Bearer <station_api_key>`
 
 ---
 
@@ -145,11 +286,13 @@ Arduino framework, ESP32 core 2.x.
 - `ArduinoJson`
 - `SD`
 
-
+```bash
+git clone https://github.com/FilipVastl005/Mateo.git
+```
 
 **Station config** — `firmware/station/config.h`
 ```cpp
-#define STATION_ID          "your-station-id" //you will be given an id after sigining up
+#define STATION_ID          "your-station-id"
 #define TX_PIN              4
 #define RAIN_PIN            27
 #define SEND_INTERVAL_MIN   5    // minutes
@@ -160,7 +303,7 @@ Arduino framework, ESP32 core 2.x.
 ```cpp
 #define WIFI_SSID     "ssid"
 #define WIFI_PASS     "password"
-#define API_KEY       "your-api-key" //you will be given an api key after signing up
+#define API_KEY       "your-station-api-key"
 #define SERVER_URL    "https://api.eggmanstudio.me/api"
 #define RX_PIN        15
 ```
@@ -171,7 +314,7 @@ Arduino framework, ESP32 core 2.x.
 
 ```bash
 cd Mateo/server
-cp .env.example .env   # set DB credentials and secret key
+cp .env.example .env   # set DB credentials, JWT secret, bcrypt cost
 docker-compose up -d
 ```
 

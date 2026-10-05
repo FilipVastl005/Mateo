@@ -69,7 +69,7 @@
 
 ### Thermal Bleed Countermeasure (Zero-Error Ambient Sampling)
 When an IoT microcontroller initializes its 2.4GHz Wi-Fi or Sub-GHz RF amplifier (+20dBm to +22dBm output), power consumption spikes from microamps to over 200–350mA. This generates an instantaneous thermal dissipation of 600mW to 1.1W.
-Because copper pours on a compact PCB exhibit high thermal conductivity ($\approx 400\text{ W}/(\text{m}\cdot\text{K})$), this thermal pulse travels to an on-board temperature sensor within 100–250ms, introducing a false positive bias of $+0.8^\circ\text{C}$ to $+2.2^\circ\text{C}$.
+Because copper pours on a compact PCB exhibit high thermal conductivity, this thermal pulse travels to an on-board temperature sensor within 100–250ms, introducing a false positive bias.
 
 **Enforced Mitigation Protocol:**
 1. **Cold Boot Entry:** The MCU resets/wakes directly into a bare-metal register state.
@@ -121,25 +121,3 @@ Because copper pours on a compact PCB exhibit high thermal conductivity ($\appro
   * When rangers, drones, or local residents connect to the captive Wi-Fi AP (`http://community.weather`), their client browser/tool requests `/api/v1/export/sync?since=<seq>`.
   * The hub packages compressed differential telemetry.
   * Once the field worker reaches internet connectivity, their device automatically syncs the bundle upstream to the central cloud.
-
----
-
-## 4. Multi-Tier Quality Control (QC) Pipeline & Spatial IDW
-
-Every incoming telemetry record is evaluated through 4 sequential validation gates:
-
-$$\begin{aligned}
-\text{Tier 1} &\longrightarrow \text{Physical Hard Limits } (T \in [-80, 70]^\circ\text{C}, P \in [800, 1100]\text{hPa}) \\
-\text{Tier 2} &\longrightarrow \text{Temporal Rate Limit } (|\Delta T| \le 3.0^\circ\text{C} \text{ per } 60\text{s}) \\
-\text{Tier 3} &\longrightarrow \text{Spatial IDW Consensus } (|x_0 - \hat{\mu}| \le 3\hat{\sigma}) \\
-\text{Tier 4} &\longrightarrow \text{SQI Progression } (\Delta \text{SQI} = -5\% \text{ on anomaly, } +1\% / 24\text{h clean})
-\end{aligned}$$
-
-### Spatial Inverse Distance Weighting Formulation
-For a station at coordinate $\mathbf{x}_0$, up to $N \le 10$ neighboring verified stations within radius $R \le 25\text{km}$ are selected:
-$$d_i = \text{Haversine}(\mathbf{x}_0, \mathbf{x}_i), \quad w_i = \frac{1}{\max(d_i, \epsilon)^2}$$
-
-The spatial consensus mean $\hat{\mu}$ and reliability-weighted standard deviation $\hat{\sigma}$ are:
-$$\hat{\mu} = \frac{\sum_{i=1}^N w_i x_i}{\sum_{i=1}^N w_i}, \qquad \hat{\sigma}^2 = \frac{\sum_{i=1}^N w_i (x_i - \hat{\mu})^2}{\sum_{i=1}^N w_i - \frac{\sum_{i=1}^N w_i^2}{\sum_{i=1}^N w_i}}$$
-
-Stations diverging by $> 3\hat{\sigma}$ are flagged with `SPATIAL_ANOMALY`. Stations whose SQI drops below $60.0\%$ are instantly removed from public APIs and weather maps to ensure crowdsourced data integrity.
